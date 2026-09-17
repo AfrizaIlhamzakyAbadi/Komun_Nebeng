@@ -1,0 +1,12 @@
+/* GENERATED SOURCE. DO NOT MODIFY. */
+package com.android.internal.org.bouncycastle.math.ec;
+
+@android.annotation.Hide // This class is not part of the Android public SDK API
+public abstract class AbstractECLookupTable
+    implements ECLookupTable
+{
+    public ECPoint lookupVar(int index)
+    {
+        return lookup(index);
+    }
+}

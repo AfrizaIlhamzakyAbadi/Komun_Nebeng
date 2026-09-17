@@ -1,0 +1,208 @@
+/*
+ * Copyright (C) 2025 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package android.util.apk;
+
+import android.annotation.Hide;
+import android.content.pm.PackageManager;
+import android.content.pm.SigningDetails.SignatureSchemeVersion;
+import android.os.SystemClock;
+
+import com.android.internal.util.FrameworkStatsLog;
+
+/**
+ * A helper class to collect and log boot-time package scan metrics.
+ * This class is instantiated at the server layer, passed down to the verification stack
+ * to collect verification telemetry, and finalized/logged at the server layer.
+ */
+@Hide
+public final class InitAppScanMetrics {
+
+    // Fast-track verification status enums
+    public static final int FAST_TRACK_STATUS_UNSPECIFIED = 0;
+    public static final int FAST_TRACK_STATUS_SUCCESS = 1;
+    public static final int FAST_TRACK_STATUS_FAILURE_MISSING_SIDECAR = 2;
+    public static final int FAST_TRACK_STATUS_FAILURE_DIGEST_MISMATCH = 3;
+    public static final int FAST_TRACK_STATUS_FAILURE_READ_ERROR = 4;
+
+    // High-level package metrics
+    private String mPackageName;
+    private boolean mIsFsiEnabled;
+    private int mNumApkSplits;
+    private final long mTotalScanStartTimeMillis;
+    private long mTotalScanDurationMillis;
+    private int mInitAppScanOutcome = PackageManager.INSTALL_UNKNOWN;
+
+    // Low-level verification metrics
+    private int mFastTrackStatus = FAST_TRACK_STATUS_UNSPECIFIED;
+    private int mSignatureSchemeVersion = SignatureSchemeVersion.UNKNOWN;
+
+    /** Starts the timer for the total scan duration. */
+    public InitAppScanMetrics() {
+        this.mTotalScanStartTimeMillis = SystemClock.uptimeMillis();
+    }
+
+    /**
+     * Sets whether the scanned package is allow-listed for FSI check.
+     *
+     * @param isFsiEnabled True if the package has FSI enabled, false otherwise.
+     * @return This {@link InitAppScanMetrics} instance for chaining.
+     */
+    public InitAppScanMetrics setIsFsiEnabled(boolean isFsiEnabled) {
+        this.mIsFsiEnabled = isFsiEnabled;
+        return this;
+    }
+
+    /**
+     * Sets the number of APK splits for the scanned package.
+     *
+     * @param numApkSplits number of APK splits.
+     * @return This {@link InitAppScanMetrics} instance for chaining.
+     */
+    public InitAppScanMetrics setNumApkSplits(int numApkSplits) {
+        this.mNumApkSplits = numApkSplits;
+        return this;
+    }
+
+    /**
+     * Sets the package name for the scanned package.
+     *
+     * @param packageName The name of the package.
+     * @return This {@link InitAppScanMetrics} instance for chaining.
+     */
+    public InitAppScanMetrics setPackageName(String packageName) {
+        this.mPackageName = packageName;
+        return this;
+    }
+
+    /**
+     * Sets the final outcome of the APK scan.
+     *
+     * @param returnCode A PackageManager.INSTALL_* error code.
+     * @return This {@link InitAppScanMetrics} instance for chaining.
+     */
+    public InitAppScanMetrics setInitAppScanOutcome(int returnCode) {
+        this.mInitAppScanOutcome = returnCode;
+        return this;
+    }
+
+    /**
+     * Sets the fast-track verification status.
+     *
+     * @param status A FAST_TRACK_STATUS_* constant.
+     * @return This {@link InitAppScanMetrics} instance for chaining.
+     */
+    public InitAppScanMetrics setFastTrackStatus(int status) {
+        this.mFastTrackStatus = status;
+        return this;
+    }
+
+    /**
+     * Sets the signature scheme version used for package verification.
+     *
+     * @param version A package manager SigningDetails.SignatureScheme.* enum value.
+     * @return This {@link InitAppScanMetrics} instance for chaining.
+     */
+    public InitAppScanMetrics setSignatureSchemeVersion(int version) {
+        this.mSignatureSchemeVersion = version;
+        return this;
+    }
+
+    /** Finalizes and logs the collected metrics to FrameworkStatsLog. */
+    public void log() {
+        this.mTotalScanDurationMillis = SystemClock.uptimeMillis() - mTotalScanStartTimeMillis;
+
+        FrameworkStatsLog.write(
+                FrameworkStatsLog.INIT_APP_SCAN_REPORTED,
+                mIsFsiEnabled,
+                mNumApkSplits,
+                translateToSignatureSchemeVersion(mSignatureSchemeVersion),
+                mTotalScanDurationMillis,
+                translateToInitAppScanOutcome(mInitAppScanOutcome),
+                mPackageName,
+                translateToFastTrackStatus(mFastTrackStatus));
+    }
+
+    private static int translateToSignatureSchemeVersion(int signatureSchemeVersion) {
+        switch (signatureSchemeVersion) {
+            case SignatureSchemeVersion.UNKNOWN:
+                return FrameworkStatsLog.INIT_APP_SCAN_REPORTED__SIGNATURE_SCHEME_VERSION__UNKNOWN;
+            case SignatureSchemeVersion.JAR:
+                return FrameworkStatsLog.INIT_APP_SCAN_REPORTED__SIGNATURE_SCHEME_VERSION__JAR;
+            case SignatureSchemeVersion.SIGNING_BLOCK_V2:
+                return FrameworkStatsLog.INIT_APP_SCAN_REPORTED__SIGNATURE_SCHEME_VERSION__V2;
+            case SignatureSchemeVersion.SIGNING_BLOCK_V3:
+                return FrameworkStatsLog.INIT_APP_SCAN_REPORTED__SIGNATURE_SCHEME_VERSION__V3;
+            case SignatureSchemeVersion.SIGNING_BLOCK_V4:
+                return FrameworkStatsLog.INIT_APP_SCAN_REPORTED__SIGNATURE_SCHEME_VERSION__V4;
+            default:
+                return FrameworkStatsLog.INIT_APP_SCAN_REPORTED__SIGNATURE_SCHEME_VERSION__UNKNOWN;
+        }
+    }
+
+    private static int translateToInitAppScanOutcome(int returnCode) {
+        switch (returnCode) {
+            case PackageManager.INSTALL_UNKNOWN:
+                return FrameworkStatsLog.INIT_APP_SCAN_REPORTED__INIT_APP_SCAN_OUTCOME__UNSPECIFIED;
+            case PackageManager.INSTALL_SUCCEEDED:
+                return FrameworkStatsLog.INIT_APP_SCAN_REPORTED__INIT_APP_SCAN_OUTCOME__SUCCESS;
+            case PackageManager.INSTALL_PARSE_FAILED_NO_CERTIFICATES:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__INIT_APP_SCAN_OUTCOME__FAILURE_NO_CERTIFICATES;
+            case PackageManager.INSTALL_FAILED_VERIFICATION_FAILURE:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__INIT_APP_SCAN_OUTCOME__FAILURE_VERIFICATION;
+            case PackageManager.INSTALL_FAILED_UPDATE_INCOMPATIBLE:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__INIT_APP_SCAN_OUTCOME__FAILURE_UPDATE_INCOMPATIBLE;
+            case PackageManager.INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__INIT_APP_SCAN_OUTCOME__FAILURE_INCONSISTENT_CERTIFICATES;
+            case PackageManager.INSTALL_PARSE_FAILED_CERTIFICATE_ENCODING:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__INIT_APP_SCAN_OUTCOME__FAILURE_CERTIFICATE_ENCODING;
+            case PackageManager.INSTALL_FAILED_DUPLICATE_PACKAGE:
+            case PackageManager.INSTALL_FAILED_INVALID_APK:
+            case PackageManager.INSTALL_FAILED_PACKAGE_CHANGED:
+            case PackageManager.INSTALL_FAILED_DUPLICATE_PERMISSION:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__INIT_APP_SCAN_OUTCOME__FAILURE_SCAN_VALIDATION;
+            default:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__INIT_APP_SCAN_OUTCOME__FAILURE_OTHER;
+        }
+    }
+
+    private static int translateToFastTrackStatus(int fastTrackStatus) {
+        switch (fastTrackStatus) {
+            case FAST_TRACK_STATUS_SUCCESS:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__FAST_TRACK_STATUS__FAST_TRACK_STATUS_SUCCESS;
+            case FAST_TRACK_STATUS_FAILURE_MISSING_SIDECAR:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__FAST_TRACK_STATUS__FAST_TRACK_STATUS_FAILURE_MISSING_SIDECAR;
+            case FAST_TRACK_STATUS_FAILURE_DIGEST_MISMATCH:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__FAST_TRACK_STATUS__FAST_TRACK_STATUS_FAILURE_DIGEST_MISMATCH;
+            case FAST_TRACK_STATUS_FAILURE_READ_ERROR:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__FAST_TRACK_STATUS__FAST_TRACK_STATUS_FAILURE_READ_ERROR;
+            default:
+                return FrameworkStatsLog
+                        .INIT_APP_SCAN_REPORTED__FAST_TRACK_STATUS__FAST_TRACK_STATUS_UNSPECIFIED;
+        }
+    }
+}

@@ -1,0 +1,10 @@
+/* GENERATED SOURCE. DO NOT MODIFY. */
+package com.android.internal.org.bouncycastle.math.ec;
+
+@android.annotation.Hide // This class is not part of the Android public SDK API
+public interface ECLookupTable
+{
+    int getSize();
+    ECPoint lookup(int index);
+    ECPoint lookupVar(int index);
+}

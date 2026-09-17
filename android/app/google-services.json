@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1048245201646",
+    "project_id": "komun-nebeng-2",
+    "storage_bucket": "komun-nebeng-2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1048245201646:android:3e22c5f03a0294b68fe1ff",
+        "android_client_info": {
+          "package_name": "com.komun.komun_nebeng"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAQ60_-zYGsZcxlwiN4yRt4rZJW62KYAi4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

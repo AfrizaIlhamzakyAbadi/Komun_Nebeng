@@ -1,0 +1,509 @@
+/*
+ * Copyright (C) 2016 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package android.service.notification;
+
+import android.annotation.FlaggedApi;
+import android.annotation.IntDef;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.annotation.StringDef;
+import android.annotation.SystemApi;
+import android.annotation.TestApi;
+import android.app.Flags;
+import android.app.Notification;
+import android.app.NotificationRule;
+import android.app.modes.ContextualMode;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Parcel;
+import android.os.Parcelable;
+import android.os.UserHandle;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+
+/**
+ * Ranking updates from the Assistant.
+ *
+ * The updates are provides as a {@link Bundle} of signals, using the keys provided in this
+ * class.
+ * Each {@code KEY} specifies what type of data it supports and what kind of Adjustment it
+ * realizes on the notification rankings.
+ *
+ * Notifications affected by the Adjustment will be re-ranked if necessary.
+ *
+ * @hide
+ */
+@SystemApi
+public final class Adjustment implements Parcelable {
+    private final String mPackage;
+    private final String mKey;
+    private final CharSequence mExplanation;
+    private final Bundle mSignals;
+    private final int mUser;
+    @Nullable private String mIssuer;
+    private int mRuleId;
+    private int mRuleOrder;
+
+    /** @hide */
+    @StringDef (prefix = { "KEY_" }, value = {
+            KEY_PEOPLE,
+            KEY_SNOOZE_CRITERIA,
+            KEY_GROUP_KEY,
+            KEY_USER_SENTIMENT,
+            KEY_CONTEXTUAL_ACTIONS,
+            KEY_TEXT_REPLIES,
+            KEY_IMPORTANCE,
+            KEY_IMPORTANCE_PROPOSAL,
+            KEY_SENSITIVE_CONTENT,
+            KEY_RANKING_SCORE,
+            KEY_NOT_CONVERSATION,
+            KEY_TYPE,
+            KEY_UNCLASSIFY,
+            KEY_SUMMARIZATION
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface Keys {}
+
+    /**
+     * Data type: ArrayList of {@code String}, where each is a representation of a
+     * {@link android.provider.ContactsContract.Contacts#CONTENT_LOOKUP_URI}.
+     * See {@link android.app.Notification.Builder#addPerson(String)}.
+     * @hide
+     */
+    @SystemApi
+    public static final String KEY_PEOPLE = "key_people";
+
+    /**
+     * Parcelable {@code ArrayList} of {@link SnoozeCriterion}. These criteria may be visible to
+     * users. If a user chooses to snooze a notification until one of these criterion, the
+     * assistant will be notified via
+     * {@link NotificationAssistantService#onNotificationSnoozedUntilContext}.
+     */
+    public static final String KEY_SNOOZE_CRITERIA = "key_snooze_criteria";
+
+    /**
+     * Data type: String. Used to change what {@link Notification#getGroup() group} a notification
+     * belongs to.
+     * @hide
+     */
+    public static final String KEY_GROUP_KEY = "key_group_key";
+
+    /**
+     * Data type: int, one of {@link NotificationListenerService.Ranking#USER_SENTIMENT_POSITIVE},
+     * {@link NotificationListenerService.Ranking#USER_SENTIMENT_NEUTRAL},
+     * {@link NotificationListenerService.Ranking#USER_SENTIMENT_NEGATIVE}. Used to express how
+     * a user feels about notifications in the same {@link android.app.NotificationChannel} as
+     * the notification represented by {@link #getKey()}.
+     */
+    public static final String KEY_USER_SENTIMENT = "key_user_sentiment";
+
+    /**
+     * Data type: ArrayList of {@link android.app.Notification.Action}.
+     * Used to suggest contextual actions for a notification.
+     *
+     * @see Notification.Action.Builder#setContextual(boolean)
+     */
+    public static final String KEY_CONTEXTUAL_ACTIONS = "key_contextual_actions";
+
+    /**
+     * Data type: ArrayList of {@link CharSequence}.
+     * Used to suggest smart replies for a notification.
+     */
+    public static final String KEY_TEXT_REPLIES = "key_text_replies";
+
+    /**
+     * Data type: int, one of importance values e.g.
+     * {@link android.app.NotificationManager#IMPORTANCE_MIN}.
+     *
+     * <p> If used from
+     * {@link NotificationAssistantService#onNotificationEnqueued(StatusBarNotification)}, and
+     * received before the notification is posted, it can block a notification from appearing or
+     * silence it. Importance adjustments received too late from
+     * {@link NotificationAssistantService#onNotificationEnqueued(StatusBarNotification)} will be
+     * ignored.
+     * </p>
+     * <p>If used from
+     * {@link NotificationAssistantService#adjustNotification(Adjustment)}, it can
+     * visually demote or cancel a notification, but use this with care if they notification was
+     * recently posted because the notification may already have made noise.
+     * </p>
+     */
+    public static final String KEY_IMPORTANCE = "key_importance";
+
+    /**
+     * Weaker than {@link #KEY_IMPORTANCE}, this adjustment suggests an importance rather than
+     * mandates an importance change.
+     *
+     * A notification listener can interpet this suggestion to show the user a prompt to change
+     * notification importance for the notification (or type, or app) moving forward.
+     *
+     * Data type: int, one of importance values e.g.
+     * {@link android.app.NotificationManager#IMPORTANCE_MIN}.
+     */
+    public static final String KEY_IMPORTANCE_PROPOSAL = "key_importance_proposal";
+
+    /**
+     * Data type: boolean, when true it suggests that the content text of this notification is
+     * sensitive. The system uses this information to improve privacy around the notification
+     * content. In {@link Build.VERSION_CODES#VANILLA_ICE_CREAM}, sensitive notification content is
+     * redacted from updates to most {@link NotificationListenerService
+     * NotificationListenerServices}. Also if an app posts a sensitive notification while
+     * {@link android.media.projection.MediaProjection screen-sharing} is active, that app's windows
+     * are blocked from screen-sharing and a {@link android.widget.Toast Toast} is shown to inform
+     * the user about this.
+     */
+    public static final String KEY_SENSITIVE_CONTENT = "key_sensitive_content";
+
+    /**
+     * Data type: float, a ranking score from 0 (lowest) to 1 (highest).
+     * Used to rank notifications inside that fall under the same classification (i.e. alerting,
+     * silenced).
+     */
+    public static final String KEY_RANKING_SCORE = "key_ranking_score";
+
+    /**
+     * Data type: boolean, when true it suggests this is NOT a conversation notification.
+     * @hide
+     */
+    @SystemApi
+    public static final String KEY_NOT_CONVERSATION = "key_not_conversation";
+
+    /**
+     * Data type: int, the classification type of this notification. The OS may display
+     * notifications differently depending on the type, and may change the alerting level of the
+     * notification.
+     */
+    public static final String KEY_TYPE = "key_type";
+
+    /** @hide */
+    @IntDef(prefix = { "TYPE_" }, value = {
+            TYPE_OTHER,
+            TYPE_PROMOTION,
+            TYPE_SOCIAL_MEDIA,
+            TYPE_NEWS,
+            TYPE_CONTENT_RECOMMENDATION,
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface Types {}
+
+    /**
+     * This notification can be categorized, but not into one of the other categories known to the
+     * OS at a given version.
+     */
+    public static final int TYPE_OTHER = 0;
+    /**
+     * The type of this notification is a promotion/deal.
+     */
+    public static final int TYPE_PROMOTION = 1;
+    /**
+     * The type of this notification is social media content that isn't a
+     * {@link Notification.Builder#setShortcutId(String) conversation}.
+     */
+    public static final int TYPE_SOCIAL_MEDIA = 2;
+    /**
+     * The type of this notification is news.
+     */
+    public static final int TYPE_NEWS = 3;
+    /**
+     * The type of this notification is content recommendation, for example new videos or books the
+     * user may be interested in.
+     */
+    public static final int TYPE_CONTENT_RECOMMENDATION = 4;
+
+    /**
+     * Data type: NotificationChannel; the presence of this key indicates that the notification
+     * classification should be removed and the channel reverted to its original channel (provided).
+     * @hide
+     */
+    public static final String KEY_UNCLASSIFY = "key_unclassify";
+
+    /**
+     * Data type: CharSequence, a summarization of the text of the notification, or, if provided for
+     * a group summary, a summarization of the text of all of the notificatrions in the group.
+     * Send this key with a null value to remove an existing summarization.
+     */
+    public static final String KEY_SUMMARIZATION = "key_summarization";
+
+    /**
+     * Data type: A List of Integers, where each string is a {@link NotificationRule#getId()} of a
+     * rule that this notification currently matches.
+     */
+    @FlaggedApi(Flags.FLAG_NM_CONTEXTUAL_DISPLAY_LAUNCH)
+    public static final String KEY_NOTIFICATION_RULES = "notification_rules";
+
+    /**
+     * Data type: Uri that points to the sound/vibration that should be played for this notification
+     * if this adjustment arrives before the notification has alerted.
+     * @hide
+     */
+    @TestApi
+    @FlaggedApi(Flags.FLAG_NM_CONTEXTUAL_DISPLAY_LAUNCH)
+    public static final String KEY_SOUND = "sound";
+
+    /**
+     * Data type: A List of Strings, where each string is a {@link ContextualMode#getId()} of a
+     * mode this notification should be allowed to bypass.
+     * @hide
+     */
+    @TestApi
+    @FlaggedApi(Flags.FLAG_NM_CONTEXTUAL_DISPLAY_LAUNCH)
+    public static final String KEY_MODE_BREAKTHROUGH_LIST = "mode_breakthrough";
+
+    /**
+     * Data type: Boolean. If true, this notification should break through all modes, regardless
+     * of the presence of absence of {@link #KEY_MODE_BREAKTHROUGH_LIST}.
+     * @hide
+     */
+    @TestApi
+    @FlaggedApi(Flags.FLAG_NM_CONTEXTUAL_DISPLAY_LAUNCH)
+    public static final String KEY_BREAKTHROUGH_ALL_MODES = "breakthrough_all_modes";
+
+    /**
+     * Data type: Boolean, true if the notification should be highlighted, false otherwise.
+     * @hide
+     */
+    @TestApi
+    @FlaggedApi(Flags.FLAG_NM_CONTEXTUAL_DISPLAY_LAUNCH)
+    public static final String KEY_HIGHLIGHT = "highlight";
+
+    /**
+     * Data type: a {@link android.annotation.ColorInt integer} that represents the notification
+     * light color that should flash if this adjustment arrives before the notification has alerted.
+     *
+     * @hide
+     */
+    @TestApi
+    @FlaggedApi(Flags.FLAG_NM_CONTEXTUAL_DISPLAY_LAUNCH)
+    public static final String KEY_LIGHT = "light";
+
+    /**
+     * Data type: a {@link NotificationRule.DynamicBundle} that represents the configuration of
+     * the dynamic bundle this notification should be added to.
+     *
+     * @hide
+     */
+    @FlaggedApi(Flags.FLAG_NM_CONTEXTUAL_DISPLAY_LAUNCH)
+    public static final String KEY_DYNAMIC_BUNDLE = "dynamic_bundle";
+
+    /**
+     * Create a notification adjustment.
+     *
+     * @param pkg The package of the notification.
+     * @param key The notification key.
+     * @param signals A bundle of signals that should inform notification display, ordering, and
+     *                interruptiveness.
+     * @param explanation A human-readable justification for the adjustment.
+     * @hide
+     */
+    @SystemApi
+    public Adjustment(String pkg, String key, Bundle signals, CharSequence explanation, int user) {
+        mPackage = pkg;
+        mKey = key;
+        mSignals = signals;
+        mExplanation = explanation;
+        mUser = user;
+    }
+
+    /**
+     * Create a notification adjustment.
+     *
+     * @param pkg The package of the notification.
+     * @param key The notification key.
+     * @param signals A bundle of signals that should inform notification display, ordering, and
+     *                interruptiveness.
+     * @param explanation A human-readable justification for the adjustment.
+     * @param userHandle User handle for for whose the adjustments will be applied.
+     */
+    public Adjustment(@NonNull String pkg, @NonNull String key, @NonNull Bundle signals,
+            @NonNull CharSequence explanation,
+            @NonNull UserHandle userHandle) {
+        mPackage = pkg;
+        mKey = key;
+        mSignals = signals;
+        mExplanation = explanation;
+        mUser = userHandle.getIdentifier();
+    }
+
+    /**
+     * Create a deep copy of a {@link Adjustment}
+     * @hide
+     */
+    public Adjustment(Adjustment src) {
+        this(src.mPackage, src.mKey, src.mSignals != null ? src.mSignals.deepCopy() : new Bundle(),
+                src.mExplanation, src.mUser);
+        this.mIssuer = src.mIssuer;
+    }
+
+    /**
+     * @hide
+     */
+    @SystemApi
+    protected Adjustment(Parcel in) {
+        if (in.readInt() == 1) {
+            mPackage = in.readString();
+        } else {
+            mPackage = null;
+        }
+        if (in.readInt() == 1) {
+            mKey = in.readString();
+        } else {
+            mKey = null;
+        }
+        if (in.readInt() == 1) {
+            mExplanation = in.readCharSequence();
+        } else {
+            mExplanation = null;
+        }
+        mSignals = in.readBundle();
+        mUser = in.readInt();
+        mIssuer = in.readString();
+        mRuleOrder = in.readInt();
+        mRuleId = in.readInt();
+    }
+
+    public static final @android.annotation.NonNull Creator<Adjustment> CREATOR = new Creator<Adjustment>() {
+        @Override
+        public Adjustment createFromParcel(Parcel in) {
+            return new Adjustment(in);
+        }
+
+        @Override
+        public Adjustment[] newArray(int size) {
+            return new Adjustment[size];
+        }
+    };
+
+    public @NonNull String getPackage() {
+        return mPackage;
+    }
+
+    public @NonNull String getKey() {
+        return mKey;
+    }
+
+    public @NonNull CharSequence getExplanation() {
+        return mExplanation;
+    }
+
+    public @NonNull Bundle getSignals() {
+        return mSignals;
+    }
+
+    /** @hide */
+    @SystemApi
+    public int getUser() {
+        return mUser;
+    }
+
+    public @NonNull UserHandle getUserHandle() {
+        return UserHandle.of(mUser);
+    }
+
+    @Override
+    public int describeContents() {
+        return 0;
+    }
+
+    @Override
+    public void writeToParcel(Parcel dest, int flags) {
+        if (mPackage != null) {
+            dest.writeInt(1);
+            dest.writeString(mPackage);
+        } else {
+            dest.writeInt(0);
+        }
+        if (mKey != null) {
+            dest.writeInt(1);
+            dest.writeString(mKey);
+        } else {
+            dest.writeInt(0);
+        }
+        if (mExplanation != null) {
+            dest.writeInt(1);
+            dest.writeCharSequence(mExplanation);
+        } else {
+            dest.writeInt(0);
+        }
+        dest.writeBundle(mSignals);
+        dest.writeInt(mUser);
+        dest.writeString(mIssuer);
+        dest.writeInt(mRuleOrder);
+        dest.writeInt(mRuleId);
+    }
+
+    @NonNull
+    @Override
+    public String toString() {
+        return "Adjustment{"
+                + "mSignals=" + mSignals.keySet()
+                + ", mUser=" + mUser
+                + ", mRuleId=" + mRuleId
+                + ", mRuleOrder=" + mRuleOrder
+                + '}';
+    }
+
+    /** @hide */
+    public void setIssuer(@Nullable String issuer) {
+        mIssuer = issuer;
+    }
+
+    /** @hide */
+    public @Nullable String getIssuer() {
+        return mIssuer;
+    }
+
+    /**
+     * @hide
+     */
+    @TestApi
+    @FlaggedApi(Flags.FLAG_NM_CONTEXTUAL_DISPLAY_LAUNCH)
+    public void setOriginatingRuleId(int ruleId) {
+        mRuleId = ruleId;
+    }
+
+    /**
+     * When {@link #KEY_NOTIFICATION_RULES} is split into behavioral Adjustments, carry over the
+     * rule id that Adjustment originated from.
+     * @hide
+     */
+    @TestApi
+    @FlaggedApi(Flags.FLAG_NM_CONTEXTUAL_DISPLAY_LAUNCH)
+    public int getOriginatingRuleId() {
+        return mRuleId;
+    }
+
+    /**
+     * @hide
+     */
+    @TestApi
+    @FlaggedApi(Flags.FLAG_NM_CONTEXTUAL_DISPLAY_LAUNCH)
+    public void setOriginatingRuleOrder(int ruleOrder) {
+        mRuleOrder = ruleOrder;
+    }
+
+    /**
+     * When {@link #KEY_NOTIFICATION_RULES} is split into behavioral Adjustments, carry over the
+     * index of the rule id that Adjustment originated from, so rules can be applied in priority
+     * order.
+     * @hide
+     */
+    @TestApi
+    @FlaggedApi(Flags.FLAG_NM_CONTEXTUAL_DISPLAY_LAUNCH)
+    public int getOriginatingRuleOrder() {
+        return mRuleOrder;
+    }
+}

@@ -1,0 +1,335 @@
+/*
+ * Copyright (C) 2023 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package android.health.connect.changelog;
+
+import android.annotation.Hide;
+import android.annotation.NonNull;
+import android.annotation.Nullable;
+import android.health.connect.HealthConnectManager;
+import android.health.connect.MedicalResourceId;
+import android.health.connect.aidl.DeletedLogsParcel;
+import android.health.connect.aidl.DeletedMedicalResourcesParcel;
+import android.health.connect.aidl.MedicalResourceListParcel;
+import android.health.connect.aidl.RecordsParcel;
+import android.health.connect.datatypes.MedicalResource;
+import android.health.connect.datatypes.Metadata;
+import android.health.connect.datatypes.Record;
+import android.health.connect.internal.datatypes.RecordInternal;
+import android.health.connect.internal.datatypes.utils.InternalExternalRecordConverter;
+import android.os.Parcel;
+import android.os.Parcelable;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * Response class for {@link HealthConnectManager#getChangeLogs} This is the response to clients
+ * fetching changes.
+ */
+public final class ChangeLogsResponse implements Parcelable {
+    // These hold upserted records in either internal or external format to save memory.
+    // The response is initially created with internal records, which is also used for
+    // converting to parcel. On first get, they are converted to external records and
+    // the internal list is set to null.
+    @Nullable private List<RecordInternal<?>> mUpsertedRecordInternals;
+    @Nullable private List<Record> mUpsertedRecords;
+    private final List<DeletedLog> mDeletedLogs;
+    private final List<MedicalResource> mUpsertedMedicalResources;
+    private final List<DeletedMedicalResource> mDeletedMedicalResources;
+    private final String mNextChangesToken;
+    private final boolean mHasMorePages;
+
+    /**
+     * Response for {@link HealthConnectManager#getChangeLogs}.
+     */
+    @Hide
+    public ChangeLogsResponse(
+            @NonNull List<RecordInternal<?>> upsertedRecordInternals,
+            @NonNull List<DeletedLog> deletedLogs,
+            @NonNull List<MedicalResource> upsertedMedicalResources,
+            @NonNull List<DeletedMedicalResource> deletedMedicalResources,
+            @NonNull String nextChangesToken,
+            boolean hasMorePages) {
+        mUpsertedRecordInternals = Objects.requireNonNull(upsertedRecordInternals);
+        mDeletedLogs = Objects.requireNonNull(deletedLogs);
+        mUpsertedMedicalResources = Objects.requireNonNull(upsertedMedicalResources);
+        mDeletedMedicalResources = Objects.requireNonNull(deletedMedicalResources);
+        mNextChangesToken = Objects.requireNonNull(nextChangesToken);
+        mHasMorePages = hasMorePages;
+    }
+
+    private ChangeLogsResponse(Parcel in) {
+        mUpsertedRecordInternals =
+                in.readParcelable(RecordsParcel.class.getClassLoader(), RecordsParcel.class)
+                        .getRecords();
+        mDeletedLogs =
+                in.readParcelable(DeletedLogsParcel.class.getClassLoader(), DeletedLogsParcel.class)
+                        .getDeletedLogs();
+        mNextChangesToken = in.readString();
+        mHasMorePages = in.readBoolean();
+        mUpsertedMedicalResources =
+                in.readParcelable(
+                                MedicalResourceListParcel.class.getClassLoader(),
+                                MedicalResourceListParcel.class)
+                        .getMedicalResources();
+        mDeletedMedicalResources =
+                in.readParcelable(
+                                DeletedMedicalResourcesParcel.class.getClassLoader(),
+                                DeletedMedicalResourcesParcel.class)
+                        .getDeletedMedicalResources();
+    }
+
+    @NonNull
+    public static final Creator<ChangeLogsResponse> CREATOR =
+            new Creator<>() {
+                @Override
+                public ChangeLogsResponse createFromParcel(Parcel in) {
+                    return new ChangeLogsResponse(in);
+                }
+
+                @Override
+                public ChangeLogsResponse[] newArray(int size) {
+                    return new ChangeLogsResponse[size];
+                }
+            };
+
+    /**
+     * Returns records that have been updated or inserted post the time when the given token was
+     * generated.
+     *
+     * <p>Clients can use the last modified time of the record to check when the record was
+     * modified.
+     */
+    @NonNull
+    public List<Record> getUpsertedRecords() {
+        if (mUpsertedRecords == null) {
+            if (mUpsertedRecordInternals != null) {
+                mUpsertedRecords =
+                        InternalExternalRecordConverter.getInstance()
+                                .getExternalRecords(mUpsertedRecordInternals);
+                mUpsertedRecordInternals = null;
+            } else {
+                mUpsertedRecords = List.of();
+            }
+        }
+        return mUpsertedRecords;
+    }
+
+    /**
+     * Returns delete logs for records that have been deleted post the time when the token was
+     * retrieved.
+     *
+     * <p>This contains record ids of deleted records and the timestamps when the records were
+     * deleted.
+     */
+    @NonNull
+    public List<DeletedLog> getDeletedLogs() {
+        return mDeletedLogs;
+    }
+
+    /**
+     * Returns medical resources that have been updated or inserted post the time when the given
+     * token was generated.
+     */
+    @NonNull
+    public List<MedicalResource> getUpsertedMedicalResources() {
+        return mUpsertedMedicalResources;
+    }
+
+    /**
+     * Returns delete logs for medical resources that have been deleted post the time when the token
+     * was retrieved.
+     *
+     * <p>This contains ids of deleted medical resources and the timestamps when the resources were
+     * deleted.
+     */
+    @NonNull
+    public List<DeletedMedicalResource> getDeletedMedicalResources() {
+        return mDeletedMedicalResources;
+    }
+
+    /** Returns token for future reads using {@link HealthConnectManager#getChangeLogs}. */
+    @NonNull
+    public String getNextChangesToken() {
+        return mNextChangesToken;
+    }
+
+    /** Returns whether there are more pages available for read. */
+    public boolean hasMorePages() {
+        return mHasMorePages;
+    }
+
+    @Override
+    public int describeContents() {
+        return 0;
+    }
+
+    @Override
+    public void writeToParcel(@NonNull Parcel dest, int flags) {
+        if (mUpsertedRecordInternals != null) {
+            dest.writeParcelable(new RecordsParcel(mUpsertedRecordInternals), 0);
+        } else if (mUpsertedRecords != null) {
+            List<RecordInternal<?>> recordInternals =
+                    mUpsertedRecords.stream().map(Record::toRecordInternal).toList();
+            dest.writeParcelable(new RecordsParcel(recordInternals), 0);
+        } else {
+            dest.writeParcelable(new RecordsParcel(List.of()), 0);
+        }
+        dest.writeParcelable(new DeletedLogsParcel(mDeletedLogs), 0);
+        dest.writeString(mNextChangesToken);
+        dest.writeBoolean(mHasMorePages);
+        dest.writeParcelable(new MedicalResourceListParcel(mUpsertedMedicalResources), 0);
+        dest.writeParcelable(new DeletedMedicalResourcesParcel(mDeletedMedicalResources), 0);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof ChangeLogsResponse that)) return false;
+        return mHasMorePages == that.mHasMorePages
+                && Objects.equals(getUpsertedRecords(), that.getUpsertedRecords())
+                && Objects.equals(mDeletedLogs, that.mDeletedLogs)
+                && Objects.equals(mUpsertedMedicalResources, that.mUpsertedMedicalResources)
+                && Objects.equals(mDeletedMedicalResources, that.mDeletedMedicalResources)
+                && Objects.equals(mNextChangesToken, that.mNextChangesToken);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(
+                getUpsertedRecords(),
+                mDeletedLogs,
+                mUpsertedMedicalResources,
+                mDeletedMedicalResources,
+                mNextChangesToken,
+                mHasMorePages);
+    }
+
+    /**
+     * A change log holds the {@link Metadata#getId()} of a deleted Record. For privacy, only unique
+     * identifiers of deleted records are returned.
+     *
+     * <p>Clients holding copies of data from Health Connect should keep a copy of these unique
+     * identifiers along with their contents. When receiving a {@link DeletedLog} in {@link
+     * ChangeLogsResponse}, use the identifiers to delete copy of the data.
+     */
+    public static final class DeletedLog {
+        private final String mDeletedRecordId;
+        private final Instant mDeletedTime;
+
+        /**
+         * @deprecated Use {@link #DeletedLog(String, Instant)}.
+         */
+        @Deprecated
+        public DeletedLog(@NonNull String deletedRecordId, long deletedTime) {
+            Objects.requireNonNull(deletedRecordId);
+            mDeletedRecordId = deletedRecordId;
+            mDeletedTime = Instant.ofEpochMilli(deletedTime);
+        }
+
+        public DeletedLog(@NonNull String deletedRecordId, @NonNull Instant deletedTime) {
+            Objects.requireNonNull(deletedRecordId);
+            Objects.requireNonNull(deletedTime);
+            mDeletedRecordId = deletedRecordId;
+            mDeletedTime = deletedTime;
+        }
+
+        /** Returns record id of the record deleted. */
+        @NonNull
+        public String getDeletedRecordId() {
+            return mDeletedRecordId;
+        }
+
+        /** Returns timestamp when the record was deleted. */
+        @NonNull
+        public Instant getDeletedTime() {
+            return mDeletedTime;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof DeletedLog that)) return false;
+            return Objects.equals(mDeletedRecordId, that.mDeletedRecordId)
+                    && Objects.equals(mDeletedTime, that.mDeletedTime);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(mDeletedRecordId, mDeletedTime);
+        }
+    }
+
+    /**
+     * A change log holds the {@link MedicalResourceId} of a deleted medical resource. For privacy,
+     * only unique identifiers of deleted medical resources are returned.
+     *
+     * <p>Clients holding copies of data from Health Connect should keep a copy of these unique
+     * identifiers along with their contents. When receiving a {@link DeletedMedicalResource} in
+     * {@link ChangeLogsResponse}, use the identifiers to delete copy of the data.
+     */
+    public static final class DeletedMedicalResource {
+        private final MedicalResourceId mDeletedMedicalResourceId;
+        private final Instant mDeletedTime;
+
+        /**
+         * Creates a {@link DeletedMedicalResource}.
+         *
+         * @param deletedMedicalResourceId the {@link MedicalResourceId} of the deleted medical
+         *     resource.
+         * @param deletedTime the {@link Instant} when the medical resource was deleted.
+         * @throws NullPointerException if {@code deletedMedicalResourceId} or {@code deletedTime}
+         *     is null.
+         */
+        public DeletedMedicalResource(
+                @NonNull MedicalResourceId deletedMedicalResourceId, @NonNull Instant deletedTime) {
+            Objects.requireNonNull(deletedMedicalResourceId);
+            Objects.requireNonNull(deletedTime);
+            mDeletedMedicalResourceId = deletedMedicalResourceId;
+            mDeletedTime = deletedTime;
+        }
+
+        /** Returns {@link MedicalResourceId} of the deleted resource. */
+        @NonNull
+        public MedicalResourceId getDeletedMedicalResourceId() {
+            return mDeletedMedicalResourceId;
+        }
+
+        /** Returns data source id of the deleted resource. */
+        @NonNull
+        public String getDataSourceId() {
+            return mDeletedMedicalResourceId.getDataSourceId();
+        }
+
+        /** Returns timestamp when the medical resource was deleted. */
+        @NonNull
+        public Instant getDeletedTime() {
+            return mDeletedTime;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof DeletedMedicalResource that)) return false;
+            return Objects.equals(mDeletedMedicalResourceId, that.mDeletedMedicalResourceId)
+                    && Objects.equals(mDeletedTime, that.mDeletedTime);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(mDeletedMedicalResourceId, mDeletedTime);
+        }
+    }
+}

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+/* //device/apps/common/assets/res/any/strings.xml
+**
+** Copyright 2006, The Android Open Source Project
+**
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
+**
+**     http://www.apache.org/licenses/LICENSE-2.0
+**
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
+** limitations under the License.
+*/
+ -->
+
+<resources xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="permlab_subscribedFeedsRead" msgid="217624769238425461">"lire les flux auxquels vous êtes abonnée"</string>
+    <string name="relationTypePartner" msgid="4018017075116766194">"Conjointe"</string>
+    <string name="app_lock_edu_dialog_description_pin" msgid="6561261301540234148">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec votre code"</string>
+    <string name="app_lock_edu_dialog_description_pattern" msgid="1813379457398697107">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec votre schéma"</string>
+    <string name="app_lock_edu_dialog_description_password" msgid="8776011963037122426">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec votre mot de passe"</string>
+    <string name="app_lock_edu_dialog_description_fp_pin" msgid="3128610132062211915">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec le déverrouillage par empreinte digitale ou votre code"</string>
+    <string name="app_lock_edu_dialog_description_fp_pattern" msgid="2684581392130952175">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec le déverrouillage par empreinte digitale ou votre schéma"</string>
+    <string name="app_lock_edu_dialog_description_fp_password" msgid="9154097862396581891">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec le déverrouillage par empreinte digitale ou votre mot de passe"</string>
+    <string name="app_lock_edu_dialog_description_face_pin" msgid="7723225023988178848">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec le déverrouillage par reconnaissance faciale ou votre code"</string>
+    <string name="app_lock_edu_dialog_description_face_pattern" msgid="991945997847600388">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec le déverrouillage par reconnaissance faciale ou votre schéma"</string>
+    <string name="app_lock_edu_dialog_description_face_password" msgid="2434099066579499816">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec le déverrouillage par reconnaissance faciale ou votre mot de passe"</string>
+    <string name="app_lock_edu_dialog_description_fp_face_pin" msgid="3624186809422457314">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec le déverrouillage par empreinte digitale, le déverrouillage par reconnaissance faciale ou votre code"</string>
+    <string name="app_lock_edu_dialog_description_fp_face_pattern" msgid="6237245460440371430">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec le déverrouillage par empreinte digitale, le déverrouillage par reconnaissance faciale ou votre schéma"</string>
+    <string name="app_lock_edu_dialog_description_fp_face_password" msgid="7583567753308871471">"Pour votre sécurité, vous seule pouvez accéder à cette appli avec le déverrouillage par empreinte digitale, le déverrouillage par reconnaissance faciale ou votre mot de passe"</string>
+</resources>

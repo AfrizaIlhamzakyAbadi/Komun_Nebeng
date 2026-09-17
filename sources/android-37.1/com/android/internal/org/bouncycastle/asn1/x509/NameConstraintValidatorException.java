@@ -1,0 +1,12 @@
+/* GENERATED SOURCE. DO NOT MODIFY. */
+package com.android.internal.org.bouncycastle.asn1.x509;
+
+@android.annotation.Hide // This class is not part of the Android public SDK API
+public class NameConstraintValidatorException
+    extends Exception
+{
+    public NameConstraintValidatorException(String msg)
+    {
+        super(msg);
+    }
+}
